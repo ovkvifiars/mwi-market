@@ -41,10 +41,11 @@ async function main() {
   };
 
   const historyDb = loadJson(HISTORY_FILE, {
-    version: 1,
+    version: 2,
     source: SOURCE_URL,
     updatedAt: 0,
     retentionDays: RETENTION_DAYS,
+    pointFormat: "[time,ask,bid,p,v]",
     items: {},
   });
 
@@ -55,16 +56,31 @@ async function main() {
       const key = `${itemHrid}:${level}`;
       const ask = toIntOr(-1, priceObj?.a);
       const bid = toIntOr(-1, priceObj?.b);
+      const avgPrice = toIntOr(-1, priceObj?.p);
+      const volume = toIntOr(-1, priceObj?.v);
 
       if (!historyDb.items[key]) historyDb.items[key] = [];
       const series = historyDb.items[key];
       const last = series.length > 0 ? series[series.length - 1] : null;
+      if (last && Array.isArray(last) && last.length < 5) {
+        // Backward compatibility: old rows were [t,a,b]
+        last[3] = -1;
+        last[4] = -1;
+      }
 
       if (last && last[0] === hourTs) {
         last[1] = ask;
         last[2] = bid;
-      } else if (!last || last[1] !== ask || last[2] !== bid) {
-        series.push([hourTs, ask, bid]);
+        last[3] = avgPrice;
+        last[4] = volume;
+      } else if (
+        !last ||
+        last[1] !== ask ||
+        last[2] !== bid ||
+        (last[3] ?? -1) !== avgPrice ||
+        (last[4] ?? -1) !== volume
+      ) {
+        series.push([hourTs, ask, bid, avgPrice, volume]);
       }
 
       let i = 0;
@@ -75,8 +91,10 @@ async function main() {
     }
   }
 
+  historyDb.version = 2;
   historyDb.updatedAt = nowSec;
   historyDb.retentionDays = RETENTION_DAYS;
+  historyDb.pointFormat = "[time,ask,bid,p,v]";
 
   ensureDir(API_FILE);
   ensureDir(HISTORY_FILE);
