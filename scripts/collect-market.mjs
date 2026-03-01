@@ -33,12 +33,7 @@ async function main() {
   }
   const raw = await res.json();
   const marketData = raw?.marketData || {};
-
-  const apiData = {
-    timestamp: nowSec,
-    sourceTimestamp: hourTs,
-    marketData,
-  };
+  const normalizedMarketData = {};
 
   const historyDb = loadJson(HISTORY_FILE, {
     version: 2,
@@ -52,12 +47,19 @@ async function main() {
   const cutoff = nowSec - RETENTION_SECONDS;
 
   for (const [itemHrid, levelMap] of Object.entries(marketData)) {
+    if (!normalizedMarketData[itemHrid]) normalizedMarketData[itemHrid] = {};
     for (const [level, priceObj] of Object.entries(levelMap || {})) {
       const key = `${itemHrid}:${level}`;
       const ask = toIntOr(-1, priceObj?.a);
       const bid = toIntOr(-1, priceObj?.b);
       const avgPrice = toIntOr(-1, priceObj?.p);
       const volume = toIntOr(-1, priceObj?.v);
+      normalizedMarketData[itemHrid][level] = {
+        a: ask,
+        b: bid,
+        p: avgPrice,
+        v: volume,
+      };
 
       if (!historyDb.items[key]) historyDb.items[key] = [];
       const series = historyDb.items[key];
@@ -90,6 +92,12 @@ async function main() {
       }
     }
   }
+
+  const apiData = {
+    timestamp: nowSec,
+    sourceTimestamp: hourTs,
+    marketData: normalizedMarketData,
+  };
 
   historyDb.version = 2;
   historyDb.updatedAt = nowSec;
